@@ -1,19 +1,25 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
+import { useAuth } from "@/hooks/use-auth";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   FileText, 
   Menu, 
   X, 
   Sun, 
   Moon, 
-  ChevronDown 
+  ChevronDown,
+  User,
+  LogOut,
+  LayoutDashboard
 } from "lucide-react";
 import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -33,7 +39,18 @@ const navLinks = [
 export function Header() {
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { user, isLoading, isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const getInitials = () => {
+    if (user?.firstName && user?.lastName) {
+      return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
+    }
+    if (user?.email) {
+      return user.email[0].toUpperCase();
+    }
+    return "U";
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -94,9 +111,55 @@ export function Header() {
               )}
             </Button>
 
-            <Button asChild className="hidden sm:inline-flex" data-testid="button-upload-cta">
-              <Link href="/app">Upload Invoice</Link>
-            </Button>
+            {isLoading ? (
+              <div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
+            ) : isAuthenticated && user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-user-menu">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.profileImageUrl || undefined} alt={user.firstName || "User"} />
+                      <AvatarFallback className="text-xs">{getInitials()}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-2 py-1.5">
+                    <p className="text-sm font-medium">{user.firstName || "User"}</p>
+                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard" data-testid="link-dashboard">
+                      <LayoutDashboard className="mr-2 h-4 w-4" />
+                      Dashboard
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/app" data-testid="link-upload">
+                      <FileText className="mr-2 h-4 w-4" />
+                      Upload Invoice
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <a href="/api/logout" data-testid="button-logout">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log Out
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <>
+                <Button variant="ghost" asChild className="hidden sm:inline-flex" data-testid="button-login">
+                  <a href="/api/login">Log In</a>
+                </Button>
+                <Button asChild className="hidden sm:inline-flex" data-testid="button-upload-cta">
+                  <Link href="/app">Upload Invoice</Link>
+                </Button>
+              </>
+            )}
 
             <Button
               variant="ghost"
@@ -118,6 +181,29 @@ export function Header() {
         {mobileMenuOpen && (
           <nav className="border-t py-4 md:hidden">
             <div className="flex flex-col gap-2">
+              {isAuthenticated && user && (
+                <>
+                  <div className="flex items-center gap-3 px-2 py-2">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={user.profileImageUrl || undefined} alt={user.firstName || "User"} />
+                      <AvatarFallback>{getInitials()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium">{user.firstName || "User"}</p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+                  </div>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-md px-3 py-2 text-sm hover-elevate"
+                    onClick={() => setMobileMenuOpen(false)}
+                    data-testid="mobile-link-dashboard"
+                  >
+                    Dashboard
+                  </Link>
+                  <div className="my-2 border-t" />
+                </>
+              )}
               <div className="px-2 py-1 text-sm font-medium text-muted-foreground">
                 Tools
               </div>
@@ -144,12 +230,30 @@ export function Header() {
                   {link.label}
                 </Link>
               ))}
-              <div className="mt-2 px-2">
-                <Button asChild className="w-full" data-testid="mobile-button-upload">
-                  <Link href="/app" onClick={() => setMobileMenuOpen(false)}>
-                    Upload Invoice
-                  </Link>
-                </Button>
+              <div className="mt-2 px-2 flex flex-col gap-2">
+                {isAuthenticated ? (
+                  <>
+                    <Button asChild className="w-full" data-testid="mobile-button-upload">
+                      <Link href="/app" onClick={() => setMobileMenuOpen(false)}>
+                        Upload Invoice
+                      </Link>
+                    </Button>
+                    <Button variant="outline" asChild className="w-full" data-testid="mobile-button-logout">
+                      <a href="/api/logout">Log Out</a>
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button asChild className="w-full" data-testid="mobile-button-login">
+                      <a href="/api/login">Log In</a>
+                    </Button>
+                    <Button variant="outline" asChild className="w-full" data-testid="mobile-button-upload">
+                      <Link href="/app" onClick={() => setMobileMenuOpen(false)}>
+                        Upload Invoice
+                      </Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </nav>

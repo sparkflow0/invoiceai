@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import UploadApp from "@/pages/upload-app";
+import Dashboard from "@/pages/dashboard";
 import Pricing from "@/pages/pricing";
 import Security from "@/pages/security";
 import About from "@/pages/about";
@@ -23,6 +24,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/app" component={UploadApp} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/security" component={Security} />
       <Route path="/about" component={About} />

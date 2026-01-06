@@ -1,30 +1,24 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, numeric, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-});
-
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export * from "./models/auth";
+export * from "./models/chat";
 
 export const extractedDataSchema = z.object({
   id: z.string(),
   vendorName: z.string(),
   invoiceNumber: z.string(),
   invoiceDate: z.string(),
+  dueDate: z.string().optional(),
   totalAmount: z.number(),
+  subtotal: z.number().optional(),
   vatAmount: z.number().optional(),
+  taxRate: z.number().optional(),
   currency: z.string(),
+  vendorAddress: z.string().optional(),
+  vendorTaxId: z.string().optional(),
+  customerName: z.string().optional(),
+  customerAddress: z.string().optional(),
+  paymentTerms: z.string().optional(),
   lineItems: z.array(z.object({
     description: z.string(),
     quantity: z.number(),
@@ -39,9 +33,13 @@ export const processingSessionSchema = z.object({
   id: z.string(),
   fileName: z.string(),
   fileType: z.string(),
+  fileSize: z.number().optional(),
+  objectPath: z.string().optional(),
+  userId: z.string().optional(),
   status: z.enum(["uploading", "processing", "completed", "error"]),
   extractedData: extractedDataSchema.optional(),
   errorMessage: z.string().optional(),
+  createdAt: z.date().optional(),
 });
 
 export type ProcessingSession = z.infer<typeof processingSessionSchema>;
