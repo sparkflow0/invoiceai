@@ -1,0 +1,330 @@
+You are a senior SaaS product designer, full-stack architect, and SEO strategist.
+
+Design and generate a complete modern SaaS website for an AI-powered platform whose core promise is:
+
+“Turn invoices and receipts into clean, structured data in seconds.”
+
+The platform automatically extracts key data from invoice PDFs and images and allows users to export the results to Excel or CSV.
+
+1️⃣ PRODUCT POSITIONING & TONE
+
+Brand personality
+
+Professional
+
+Trustworthy
+
+Premium
+
+Minimal
+
+Enterprise-calm (not playful, not cheap)
+
+Target users
+
+Small businesses
+
+Freelancers
+
+Finance teams
+
+Accountants
+
+E-commerce sellers
+
+Core value
+
+Eliminate manual data entry
+
+Reduce VAT/tax errors
+
+Save time
+
+No accounting software required
+
+Avoid marketing language like:
+
+“Free tools”
+
+“Best PDF utilities”
+
+“Fast & fun”
+
+Use outcome-driven language:
+
+Accuracy
+
+Compliance
+
+Time saved
+
+Clean data
+
+Automation
+
+2️⃣ WEBSITE STRUCTURE (REQUIRED PAGES)
+
+Generate the following pages with full UI, copy, and layout:
+
+A. Homepage
+
+Must include:
+
+Clear hero headline
+
+Sub-headline explaining the outcome
+
+Upload CTA
+
+How it works (3 steps)
+
+Key features
+
+Security & privacy reassurance
+
+Pricing preview
+
+Footer with legal links
+
+Hero example tone (do not copy verbatim):
+“Turn invoices into structured data in seconds.”
+
+B. Tool Pages (SEO-Driven)
+
+Create separate landing pages for:
+
+Invoice PDF to Excel
+
+Receipt Image to Excel
+
+Extract VAT from Invoice
+
+Invoice Data Extraction AI
+
+Each page must:
+
+Focus on one problem
+
+Include keyword-optimized headings
+
+Include upload CTA
+
+Explain use cases
+
+Include FAQs
+
+C. Upload / App Page
+
+This is the core functional page.
+
+Required functionality:
+
+Drag & drop file upload
+
+Accept PDF, JPG, PNG
+
+Show upload progress
+
+Process document using AI
+
+Display extracted data in editable table:
+
+Vendor name
+
+Invoice number
+
+Invoice date
+
+Total amount
+
+VAT / tax amount
+
+Currency
+
+(Optional) line items
+
+Export buttons:
+
+Excel (.xlsx)
+
+CSV
+
+Copy to clipboard
+
+Clear “file deleted after processing” message
+
+D. Pricing Page
+
+Include:
+
+Free plan (3 files/day)
+
+Paid plan(s):
+
+Monthly subscription
+
+Credit-based option
+
+Clear value comparison
+
+No hidden features
+
+E. Trust & Security Page
+
+Include:
+
+File auto-deletion policy
+
+No training on user data
+
+Encryption statement
+
+GDPR-style language
+
+Business-grade privacy tone
+
+F. About Page
+
+Explain:
+
+Mission: simplify document workflows
+
+Who it’s for
+
+What problem it solves
+
+No mention of founders required
+
+G. Legal Pages
+
+Generate:
+
+Privacy Policy
+
+Terms of Service
+
+Professional, neutral, compliant language.
+
+3️⃣ CORE FEATURES (MUST BE IMPLEMENTED)
+AI Processing
+
+OCR + AI understanding
+
+Structured JSON extraction
+
+High accuracy
+
+Handles scans and phone photos
+
+User Experience
+
+Fast (under 10 seconds)
+
+Minimal clicks
+
+Mobile-friendly
+
+No clutter
+
+Access Control
+
+Free usage limit
+
+Paywall after limit
+
+Stripe-style checkout
+
+4️⃣ TECHNICAL EXPECTATIONS
+
+Generate the site assuming:
+
+Frontend: modern React / Next.js style
+
+Backend: API-based processing
+
+Stateless architecture
+
+Temporary file storage with auto-delete
+
+Secure upload handling
+
+Do NOT include:
+
+Accounting dashboards
+
+Bank integrations
+
+User roles
+
+Charts
+
+Complex settings
+
+5️⃣ VISUAL DESIGN GUIDELINES
+
+Neutral color palette (dark gray, slate, deep blue)
+
+Plenty of whitespace
+
+Clean typography
+
+No ads
+
+No popups
+
+SaaS-grade UI
+
+Think:
+Stripe × Notion × Enterprise document tools
+
+6️⃣ SEO REQUIREMENTS
+
+Semantic HTML
+
+Fast loading
+
+Clear H1/H2 structure
+
+SEO-friendly URLs
+
+FAQ schema sections
+
+High-intent keyword targeting
+
+7️⃣ CALL TO ACTION STYLE
+
+CTAs should be:
+
+“Upload invoice”
+
+“Convert to Excel”
+
+“Extract data”
+
+“Try with sample file”
+
+Avoid:
+
+“Sign up now”
+
+“Buy now”
+
+Aggressive sales language
+
+8️⃣ FINAL OUTPUT EXPECTATION
+
+Generate:
+
+Full website structure
+
+Page copy
+
+UI layout descriptions
+
+Component structure
+
+Feature logic explanations
+
+Ready-to-deploy SaaS website
+
+The result should feel like a real, premium, revenue-ready AI product, not a demo or hobby project.
