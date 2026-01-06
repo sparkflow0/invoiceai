@@ -1,20 +1,23 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { type User, type InsertUser, type ProcessingSession, type ExtractedData } from "@shared/schema";
 import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  createSession(fileName: string, fileType: string): Promise<ProcessingSession>;
+  getSession(id: string): Promise<ProcessingSession | undefined>;
+  updateSession(id: string, updates: Partial<ProcessingSession>): Promise<ProcessingSession | undefined>;
+  deleteSession(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
+  private sessions: Map<string, ProcessingSession>;
 
   constructor() {
     this.users = new Map();
+    this.sessions = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -32,6 +35,35 @@ export class MemStorage implements IStorage {
     const user: User = { ...insertUser, id };
     this.users.set(id, user);
     return user;
+  }
+
+  async createSession(fileName: string, fileType: string): Promise<ProcessingSession> {
+    const id = randomUUID();
+    const session: ProcessingSession = {
+      id,
+      fileName,
+      fileType,
+      status: "uploading",
+    };
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  async getSession(id: string): Promise<ProcessingSession | undefined> {
+    return this.sessions.get(id);
+  }
+
+  async updateSession(id: string, updates: Partial<ProcessingSession>): Promise<ProcessingSession | undefined> {
+    const session = this.sessions.get(id);
+    if (!session) return undefined;
+    
+    const updatedSession = { ...session, ...updates };
+    this.sessions.set(id, updatedSession);
+    return updatedSession;
+  }
+
+  async deleteSession(id: string): Promise<boolean> {
+    return this.sessions.delete(id);
   }
 }
 
