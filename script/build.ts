@@ -1,5 +1,5 @@
 import { build as esbuild } from "esbuild";
-import { build as viteBuild } from "vite";
+import { build as viteBuild, createLogger } from "vite";
 import { rm, readFile } from "fs/promises";
 
 // server deps to bundle to reduce openat(2) syscalls
@@ -32,11 +32,26 @@ const allowlist = [
   "zod-validation-error",
 ];
 
+const viteLogger = createLogger();
+const postcssWarning =
+  "A PostCSS plugin did not pass the `from` option to `postcss.parse`";
+
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");
-  await viteBuild();
+  await viteBuild({
+    logLevel: "info",
+    customLogger: {
+      ...viteLogger,
+      warn: (msg, options) => {
+        if (msg.includes(postcssWarning)) {
+          return;
+        }
+        viteLogger.warn(msg, options);
+      },
+    },
+  });
 
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));

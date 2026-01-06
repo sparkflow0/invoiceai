@@ -5,6 +5,7 @@ import { uploadRequestSchema, type ExtractedData } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { z } from "zod";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -12,140 +13,159 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-function generateMockExtractedData(): ExtractedData {
-  const vendors = [
-    "Acme Corporation Ltd",
-    "TechSupply Inc",
-    "Global Services GmbH",
-    "Nordic Solutions AB",
-    "Pacific Trading Co",
-  ];
-  
-  const currencies = ["USD", "EUR", "GBP", "CHF", "CAD"];
-  
-  const lineItemDescriptions = [
-    "Software License - Annual",
-    "Support & Maintenance",
-    "Implementation Services",
-    "Consulting Hours",
-    "Hardware Components",
-    "Cloud Storage - Monthly",
-    "Training Session",
-    "API Access Fee",
-  ];
+const processRequestSchema = z.object({
+  fileDataUrl: z.string().min(1),
+});
 
-  const vendor = vendors[Math.floor(Math.random() * vendors.length)];
-  const currency = currencies[Math.floor(Math.random() * currencies.length)];
-  const invoiceNum = `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
-  
-  const numItems = Math.floor(Math.random() * 4) + 1;
-  const lineItems = [];
-  let subtotal = 0;
-  
-  for (let i = 0; i < numItems; i++) {
-    const desc = lineItemDescriptions[Math.floor(Math.random() * lineItemDescriptions.length)];
-    const qty = Math.floor(Math.random() * 10) + 1;
-    const unitPrice = Math.round((Math.random() * 500 + 50) * 100) / 100;
-    const total = Math.round(qty * unitPrice * 100) / 100;
-    subtotal += total;
-    
-    lineItems.push({
-      description: desc,
-      quantity: qty,
-      unitPrice,
-      total,
-    });
-  }
-  
-  const vatRate = [0.05, 0.10, 0.19, 0.20, 0.21][Math.floor(Math.random() * 5)];
-  const vatAmount = Math.round(subtotal * vatRate * 100) / 100;
-  const totalAmount = Math.round((subtotal + vatAmount) * 100) / 100;
-  
-  const today = new Date();
-  const daysAgo = Math.floor(Math.random() * 30);
-  const invoiceDate = new Date(today.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-  
-  return {
-    id: randomUUID(),
-    vendorName: vendor,
-    invoiceNumber: invoiceNum,
-    invoiceDate: invoiceDate.toISOString().split('T')[0],
-    totalAmount,
-    vatAmount,
-    currency,
-    lineItems,
-  };
+const aiFieldSchema = z.object({
+  label: z.string().min(1),
+  value: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+});
+
+const aiExtractedDataSchema = z
+  .object({
+    fields: z
+      .array(aiFieldSchema)
+      .min(1)
+      .refine(
+        (fields) =>
+          fields.some((field) => {
+            if (field.value === null || field.value === undefined) return false;
+            if (typeof field.value === "string") return field.value.trim().length > 0;
+            return true;
+          }),
+        { message: "No extracted field values found." }
+      ),
+    lineItems: z
+      .array(
+        z.record(
+          z.union([z.string(), z.number(), z.boolean(), z.null()])
+        )
+      )
+      .optional(),
+  })
+  .passthrough();
+
+function parseDataUrl(dataUrl: string): { mime: string; base64: string } | null {
+  const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl);
+  if (!match) return null;
+  return { mime: match[1], base64: match[2] };
 }
 
-async function extractDataWithAI(fileName: string, fileType: string): Promise<ExtractedData> {
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function getLineItemColumns(lineItems: Array<Record<string, unknown>>): string[] {
+  const columns: string[] = [];
+  for (const item of lineItems) {
+    for (const key of Object.keys(item)) {
+      if (!columns.includes(key)) {
+        columns.push(key);
+      }
+    }
+  }
+  return columns;
+}
+
+type InvoiceInputContent =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string; detail: "low" | "high" | "auto" }
+  | { type: "input_file"; file_data: string; filename?: string };
+
+async function extractDataWithAI(
+  fileName: string,
+  fileType: string,
+  fileDataUrl?: string
+): Promise<ExtractedData> {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!apiKey || apiKey === "_DUMMY_API_KEY_") {
+    throw new Error("AI API key is missing.");
+  }
+
+  if (!fileDataUrl) {
+    throw new Error("No file data provided.");
+  }
+
   try {
-    const prompt = `You are an invoice data extraction AI. Extract structured data from an invoice document.
+    const prompt = `You are a document data extraction system. Extract structured data from the provided invoice, receipt, or statement.
 
 The uploaded file is: "${fileName}" (type: ${fileType})
 
-Since I cannot see the actual document content, generate realistic sample invoice data that would be typical for a business invoice. Return a JSON object with these fields:
+Return a JSON object with this shape:
 
 {
-  "vendorName": "Company name",
-  "invoiceNumber": "INV-XXXX-XXXX format",
-  "invoiceDate": "YYYY-MM-DD format",
-  "dueDate": "YYYY-MM-DD format (optional)",
-  "totalAmount": number,
-  "subtotal": number (optional),
-  "vatAmount": number (optional),
-  "taxRate": number (optional, as decimal like 0.20 for 20%),
-  "currency": "USD/EUR/GBP etc",
-  "vendorAddress": "Full address (optional)",
-  "vendorTaxId": "Tax ID number (optional)",
-  "customerName": "Customer company name (optional)",
-  "customerAddress": "Customer address (optional)",
-  "paymentTerms": "Net 30, etc (optional)",
+  "fields": [
+    { "label": "Invoice Number", "value": "INV-0001" },
+    { "label": "Invoice Date", "value": "2025-01-31" },
+    { "label": "Total", "value": 123.45 }
+  ],
   "lineItems": [
-    {
-      "description": "Item description",
-      "quantity": number,
-      "unitPrice": number,
-      "total": number
-    }
+    { "Description": "Item description", "Quantity": 2, "Unit Price": 10.5, "Total": 21.0 }
   ]
 }
 
+Use labels as they appear in the document. Use numbers for numeric values and ISO dates where possible.
+Only include fields you can read. If you cannot read any fields, return {"fields": []}.
 Return ONLY valid JSON, no explanation.`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.1",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_completion_tokens: 2048,
+    const parsedDataUrl = parseDataUrl(fileDataUrl);
+    if (!parsedDataUrl) {
+      throw new Error("Invalid file data.");
+    }
+
+    const resolvedType = fileType || parsedDataUrl.mime;
+    const inputContent: InvoiceInputContent[] = [
+      { type: "input_text", text: prompt },
+    ];
+
+    if (resolvedType === "application/pdf") {
+      inputContent.push({
+        type: "input_file",
+        file_data: parsedDataUrl.base64,
+        filename: fileName || "invoice.pdf",
+      });
+    } else if (resolvedType.startsWith("image/")) {
+      inputContent.push({
+        type: "input_image",
+        image_url: fileDataUrl,
+        detail: "high",
+      });
+    } else {
+      throw new Error(`Unsupported file type: ${resolvedType}`);
+    }
+
+    const response = await openai.responses.create({
+      model: process.env.OPENAI_INVOICE_MODEL ?? "gpt-4.1-mini",
+      input: [
+        {
+          role: "user",
+          content: inputContent,
+        },
+      ],
+      text: { format: { type: "json_object" } },
+      max_output_tokens: 2048,
     });
 
-    const content = response.choices[0]?.message?.content;
+    const content = response.output_text;
     if (!content) {
       throw new Error("No response from AI");
     }
 
-    const parsed = JSON.parse(content);
+    const parsed = aiExtractedDataSchema.parse(JSON.parse(content));
+    const fields = parsed.fields.map((field) => ({
+      label: field.label,
+      value: field.value === undefined ? null : field.value,
+    }));
     return {
       id: randomUUID(),
-      vendorName: parsed.vendorName || "Unknown Vendor",
-      invoiceNumber: parsed.invoiceNumber || `INV-${Date.now()}`,
-      invoiceDate: parsed.invoiceDate || new Date().toISOString().split('T')[0],
-      dueDate: parsed.dueDate,
-      totalAmount: parsed.totalAmount || 0,
-      subtotal: parsed.subtotal,
-      vatAmount: parsed.vatAmount,
-      taxRate: parsed.taxRate,
-      currency: parsed.currency || "USD",
-      vendorAddress: parsed.vendorAddress,
-      vendorTaxId: parsed.vendorTaxId,
-      customerName: parsed.customerName,
-      customerAddress: parsed.customerAddress,
-      paymentTerms: parsed.paymentTerms,
-      lineItems: parsed.lineItems || [],
+      fields,
+      lineItems: parsed.lineItems,
     };
   } catch (error) {
-    console.error("AI extraction failed, using mock data:", error);
-    return generateMockExtractedData();
+    console.error("AI extraction failed:", error);
+    throw error;
   }
 }
 
@@ -154,8 +174,27 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  await setupAuth(app);
-  registerAuthRoutes(app);
+  const authEnabled = Boolean(
+    process.env.REPL_ID && process.env.SESSION_SECRET && process.env.DATABASE_URL,
+  );
+
+  if (authEnabled) {
+    await setupAuth(app);
+    registerAuthRoutes(app);
+  } else {
+    app.get("/api/auth/user", (_req, res) => {
+      res.status(200).json(null);
+    });
+    app.get("/api/login", (_req, res) => {
+      res.status(501).json({
+        message: "Auth not configured. Set REPL_ID to enable login.",
+      });
+    });
+    app.get("/api/logout", (_req, res) => {
+      res.redirect("/");
+    });
+  }
+
   registerObjectStorageRoutes(app);
   
   app.post("/api/sessions", async (req, res) => {
@@ -194,10 +233,19 @@ export async function registerRoutes(
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
+
+      const parsedProcess = processRequestSchema.safeParse(req.body ?? {});
+      if (!parsedProcess.success) {
+        return res.status(400).json({ error: "Invalid request body", details: parsedProcess.error.issues });
+      }
       
       await storage.updateSession(req.params.id, { status: "processing" });
       
-      const extractedData = await extractDataWithAI(session.fileName, session.fileType);
+      const extractedData = await extractDataWithAI(
+        session.fileName,
+        session.fileType,
+        parsedProcess.data.fileDataUrl
+      );
       
       const updatedSession = await storage.updateSession(req.params.id, {
         status: "completed",
@@ -210,10 +258,10 @@ export async function registerRoutes(
       
       await storage.updateSession(req.params.id, {
         status: "error",
-        errorMessage: "Processing failed. Please try again.",
+        errorMessage: "AI could not read this document. Please review the original and try again.",
       });
       
-      res.status(500).json({ error: "Processing failed" });
+      res.status(500).json({ error: "AI extraction failed" });
     }
   });
 
@@ -230,77 +278,75 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/export/csv", async (req, res) => {
-    try {
-      const { data } = req.body;
-      if (!data) {
-        return res.status(400).json({ error: "No data provided" });
-      }
-      
-      const headers = ["Field", "Value"];
-      const rows = [
-        ["Vendor Name", data.vendorName || ""],
-        ["Invoice Number", data.invoiceNumber || ""],
-        ["Invoice Date", data.invoiceDate || ""],
-        ["Total Amount", String(data.totalAmount || "")],
-        ["VAT Amount", String(data.vatAmount || "")],
-        ["Currency", data.currency || ""],
-      ];
-      
-      if (data.lineItems && data.lineItems.length > 0) {
-        rows.push(["", ""]);
-        rows.push(["Line Items", ""]);
-        rows.push(["Description", "Quantity", "Unit Price", "Total"]);
-        for (const item of data.lineItems) {
-          rows.push([item.description, String(item.quantity), String(item.unitPrice), String(item.total)]);
+    app.post("/api/export/csv", async (req, res) => {
+      try {
+        const { data } = req.body;
+        if (!data) {
+          return res.status(400).json({ error: "No data provided" });
         }
-      }
-      
-      const csvContent = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
-      
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename="invoice-data-${data.invoiceNumber || 'export'}.csv"`);
-      res.send(csvContent);
-    } catch (error) {
-      console.error("Error exporting CSV:", error);
-      res.status(500).json({ error: "Failed to export CSV" });
+        
+        const headers = ["Field", "Value"];
+        const fields = Array.isArray(data.fields) ? data.fields : [];
+        const rows = fields.map((field: any) => [
+          formatCellValue(field?.label),
+          formatCellValue(field?.value),
+        ]);
+
+        if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
+          const columns = getLineItemColumns(data.lineItems);
+          rows.push(["", ""]);
+          rows.push(["Line Items", ""]);
+          rows.push(columns);
+          for (const item of data.lineItems) {
+            rows.push(columns.map((column) => formatCellValue(item?.[column])));
+          }
+        }
+        
+        const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
+        
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="extracted-data.csv"`);
+        res.send(csvContent);
+      } catch (error) {
+        console.error("Error exporting CSV:", error);
+        res.status(500).json({ error: "Failed to export CSV" });
     }
   });
 
-  app.post("/api/export/excel", async (req, res) => {
-    try {
-      const { data } = req.body;
-      if (!data) {
-        return res.status(400).json({ error: "No data provided" });
-      }
-      
-      const rows = [
-        ["Field", "Value"],
-        ["Vendor Name", data.vendorName || ""],
-        ["Invoice Number", data.invoiceNumber || ""],
-        ["Invoice Date", data.invoiceDate || ""],
-        ["Total Amount", String(data.totalAmount || "")],
-        ["VAT Amount", String(data.vatAmount || "")],
-        ["Currency", data.currency || ""],
-      ];
-      
-      if (data.lineItems && data.lineItems.length > 0) {
-        rows.push(["", ""]);
-        rows.push(["Line Items", ""]);
-        rows.push(["Description", "Quantity", "Unit Price", "Total"]);
-        for (const item of data.lineItems) {
-          rows.push([item.description, String(item.quantity), String(item.unitPrice), String(item.total)]);
+    app.post("/api/export/excel", async (req, res) => {
+      try {
+        const { data } = req.body;
+        if (!data) {
+          return res.status(400).json({ error: "No data provided" });
         }
-      }
-      
-      const tsvContent = rows.map(row => row.join("\t")).join("\n");
-      
-      res.setHeader("Content-Type", "application/vnd.ms-excel");
-      res.setHeader("Content-Disposition", `attachment; filename="invoice-data-${data.invoiceNumber || 'export'}.xls"`);
-      res.send(tsvContent);
-    } catch (error) {
-      console.error("Error exporting Excel:", error);
-      res.status(500).json({ error: "Failed to export Excel" });
+        
+        const fields = Array.isArray(data.fields) ? data.fields : [];
+        const rows = [
+          ["Field", "Value"],
+          ...fields.map((field: any) => [
+            formatCellValue(field?.label),
+            formatCellValue(field?.value),
+          ]),
+        ];
+
+        if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
+          const columns = getLineItemColumns(data.lineItems);
+          rows.push(["", ""]);
+          rows.push(["Line Items", ""]);
+          rows.push(columns);
+          for (const item of data.lineItems) {
+            rows.push(columns.map((column) => formatCellValue(item?.[column])));
+          }
+        }
+        
+        const tsvContent = rows.map(row => row.join("\t")).join("\n");
+        
+        res.setHeader("Content-Type", "application/vnd.ms-excel");
+        res.setHeader("Content-Disposition", `attachment; filename="extracted-data.xls"`);
+        res.send(tsvContent);
+      } catch (error) {
+        console.error("Error exporting Excel:", error);
+        res.status(500).json({ error: "Failed to export Excel" });
     }
   });
 

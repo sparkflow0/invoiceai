@@ -1,10 +1,10 @@
-import { type User, type InsertUser, type ProcessingSession, type ExtractedData } from "@shared/schema";
+import { type User, type UpsertUser, type ProcessingSession, type ExtractedData } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: UpsertUser): Promise<User>;
   createSession(fileName: string, fileType: string): Promise<ProcessingSession>;
   getSession(id: string): Promise<ProcessingSession | undefined>;
   updateSession(id: string, updates: Partial<ProcessingSession>): Promise<ProcessingSession | undefined>;
@@ -26,13 +26,21 @@ export class MemStorage implements IStorage {
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+      (user) => user.email === username,
     );
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: UpsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
+    const user: User = {
+      id,
+      email: insertUser.email ?? null,
+      firstName: insertUser.firstName ?? null,
+      lastName: insertUser.lastName ?? null,
+      profileImageUrl: insertUser.profileImageUrl ?? null,
+      createdAt: insertUser.createdAt ?? null,
+      updatedAt: insertUser.updatedAt ?? null,
+    };
     this.users.set(id, user);
     return user;
   }

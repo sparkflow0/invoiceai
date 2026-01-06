@@ -36,11 +36,51 @@ interface FileInfo {
   type: string;
 }
 
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const errorFormFields = [
+  "Vendor Name",
+  "Invoice Number",
+  "Invoice Date",
+  "Total Amount",
+  "VAT Amount",
+  "Currency",
+];
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+const formatFieldValue = (
+  value: ExtractedData["fields"][number]["value"] | undefined
+) => {
+  if (value === null || value === undefined) return "";
+  return String(value);
+};
+
+const getLineItemColumns = (
+  lineItems: NonNullable<ExtractedData["lineItems"]>
+) => {
+  const columns: string[] = [];
+  for (const item of lineItems) {
+    for (const key of Object.keys(item)) {
+      if (!columns.includes(key)) {
+        columns.push(key);
+      }
+    }
+  }
+  return columns;
+};
+
 export default function UploadApp() {
   const { toast } = useToast();
   const [status, setStatus] = useState<ProcessingStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [editableData, setEditableData] = useState<ExtractedData | null>(null);
@@ -59,13 +99,24 @@ export default function UploadApp() {
   });
 
   const processSessionMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiRequest("POST", `/api/sessions/${id}/process`);
+    mutationFn: async ({ id, fileDataUrl }: { id: string; fileDataUrl: string }) => {
+      const response = await apiRequest("POST", `/api/sessions/${id}/process`, {
+        fileDataUrl,
+      });
       return response.json() as Promise<ProcessingSession>;
     },
   });
 
   const processFile = useCallback(async (file: File) => {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast({
+        title: "File too large",
+        description: "Please upload a file smaller than 10MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const info = { name: file.name, size: file.size, type: file.type };
     setFileInfo(info);
     setStatus("uploading");
@@ -77,6 +128,9 @@ export default function UploadApp() {
     }, 100);
 
     try {
+      const fileDataUrl = await readFileAsDataUrl(file);
+      setFilePreviewUrl(fileDataUrl);
+
       const session = await createSessionMutation.mutateAsync(info);
       setSessionId(session.id);
       clearInterval(progressInterval);
@@ -87,7 +141,10 @@ export default function UploadApp() {
         setProgress((prev) => Math.min(prev + 5, 90));
       }, 150);
 
-      const result = await processSessionMutation.mutateAsync(session.id);
+      const result = await processSessionMutation.mutateAsync({
+        id: session.id,
+        fileDataUrl,
+      });
       clearInterval(processingInterval);
       setProgress(100);
 
@@ -102,10 +159,17 @@ export default function UploadApp() {
     } catch (error) {
       clearInterval(progressInterval);
       setStatus("error");
-      setErrorMessage(error instanceof Error ? error.message : "An unexpected error occurred.");
+      const aiFailureMessage =
+        "AI could not read this document. Review the original below and try again.";
+      const fallbackMessage = "There was an error processing your file. Please try again.";
+      const message =
+        error instanceof Error && error.message.includes("AI extraction failed")
+          ? aiFailureMessage
+          : fallbackMessage;
+      setErrorMessage(message);
       toast({
         title: "Processing Failed",
-        description: "There was an error processing your file. Please try again.",
+        description: message,
         variant: "destructive",
       });
     }
@@ -160,30 +224,33 @@ export default function UploadApp() {
     return validTypes.includes(file.type);
   };
 
-  const handleFieldChange = (field: keyof ExtractedData, value: string | number) => {
-    if (editableData) {
-      setEditableData({ ...editableData, [field]: value });
-    }
+  const handleFieldChange = (index: number, value: string) => {
+    if (!editableData) return;
+    const nextFields = editableData.fields.map((field, fieldIndex) =>
+      fieldIndex === index ? { ...field, value } : field
+    );
+    setEditableData({ ...editableData, fields: nextFields });
   };
 
   const handleExportExcel = () => {
     if (editableData) {
       const headers = ["Field", "Value"];
-      const rows = [
-        ["Vendor Name", editableData.vendorName],
-        ["Invoice Number", editableData.invoiceNumber],
-        ["Invoice Date", editableData.invoiceDate],
-        ["Total Amount", editableData.totalAmount.toString()],
-        ["VAT Amount", editableData.vatAmount?.toString() || ""],
-        ["Currency", editableData.currency],
-      ];
+      const rows = editableData.fields.map((field) => [
+        field.label,
+        formatFieldValue(field.value),
+      ]);
 
       if (editableData.lineItems && editableData.lineItems.length > 0) {
+        const lineItemColumns = getLineItemColumns(editableData.lineItems);
         rows.push(["", ""]);
         rows.push(["Line Items", ""]);
-        rows.push(["Description", "Quantity", "Unit Price", "Total"] as any);
+        rows.push(lineItemColumns);
         for (const item of editableData.lineItems) {
-          rows.push([item.description, String(item.quantity), String(item.unitPrice), String(item.total)] as any);
+          rows.push(
+            lineItemColumns.map((column) =>
+              formatFieldValue(item[column] ?? null)
+            )
+          );
         }
       }
       
@@ -195,7 +262,8 @@ export default function UploadApp() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `invoice-data-${editableData.invoiceNumber}.xls`;
+      const baseName = fileInfo?.name?.replace(/\.[^/.]+$/, "") || "extracted-data";
+      a.download = `${baseName}.xls`;
       a.click();
       URL.revokeObjectURL(url);
       
@@ -209,21 +277,22 @@ export default function UploadApp() {
   const handleExportCSV = () => {
     if (editableData) {
       const headers = ["Field", "Value"];
-      const rows = [
-        ["Vendor Name", editableData.vendorName],
-        ["Invoice Number", editableData.invoiceNumber],
-        ["Invoice Date", editableData.invoiceDate],
-        ["Total Amount", editableData.totalAmount.toString()],
-        ["VAT Amount", editableData.vatAmount?.toString() || ""],
-        ["Currency", editableData.currency],
-      ];
+      const rows = editableData.fields.map((field) => [
+        field.label,
+        formatFieldValue(field.value),
+      ]);
 
       if (editableData.lineItems && editableData.lineItems.length > 0) {
+        const lineItemColumns = getLineItemColumns(editableData.lineItems);
         rows.push(["", ""]);
         rows.push(["Line Items", ""]);
-        rows.push(["Description", "Quantity", "Unit Price", "Total"] as any);
+        rows.push(lineItemColumns);
         for (const item of editableData.lineItems) {
-          rows.push([item.description, String(item.quantity), String(item.unitPrice), String(item.total)] as any);
+          rows.push(
+            lineItemColumns.map((column) =>
+              formatFieldValue(item[column] ?? null)
+            )
+          );
         }
       }
       
@@ -232,7 +301,8 @@ export default function UploadApp() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `invoice-data-${editableData.invoiceNumber}.csv`;
+      const baseName = fileInfo?.name?.replace(/\.[^/.]+$/, "") || "extracted-data";
+      a.download = `${baseName}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       
@@ -245,16 +315,20 @@ export default function UploadApp() {
 
   const handleCopyToClipboard = () => {
     if (editableData) {
-      let text = `Vendor: ${editableData.vendorName}
-Invoice #: ${editableData.invoiceNumber}
-Date: ${editableData.invoiceDate}
-Total: ${editableData.currency} ${editableData.totalAmount.toFixed(2)}
-VAT: ${editableData.currency} ${editableData.vatAmount?.toFixed(2) || "N/A"}`;
+      const fieldLines = editableData.fields.map(
+        (field) => `${field.label}: ${formatFieldValue(field.value)}`
+      );
+      let text = fieldLines.join("\n");
 
       if (editableData.lineItems && editableData.lineItems.length > 0) {
-        text += "\n\nLine Items:";
+        const lineItemColumns = getLineItemColumns(editableData.lineItems);
+        text += "\n\nLine Items:\n";
+        text += lineItemColumns.join(" | ");
         for (const item of editableData.lineItems) {
-          text += `\n- ${item.description}: ${item.quantity} x ${editableData.currency} ${item.unitPrice.toFixed(2)} = ${editableData.currency} ${item.total.toFixed(2)}`;
+          const row = lineItemColumns.map((column) =>
+            formatFieldValue(item[column] ?? null)
+          );
+          text += `\n${row.join(" | ")}`;
         }
       }
       
@@ -270,6 +344,7 @@ VAT: ${editableData.currency} ${editableData.vatAmount?.toFixed(2) || "N/A"}`;
     setStatus("idle");
     setProgress(0);
     setFileInfo(null);
+    setFilePreviewUrl(null);
     setSessionId(null);
     setExtractedData(null);
     setEditableData(null);
@@ -281,6 +356,10 @@ VAT: ${editableData.currency} ${editableData.vatAmount?.toFixed(2) || "N/A"}`;
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
+
+  const lineItemColumns = editableData?.lineItems
+    ? getLineItemColumns(editableData.lineItems)
+    : [];
 
   return (
     <div className="py-12 md:py-20">
@@ -364,20 +443,81 @@ VAT: ${editableData.currency} ${editableData.vatAmount?.toFixed(2) || "N/A"}`;
         {status === "error" && (
           <Card className="mt-12">
             <CardContent className="p-8">
-              <div className="flex flex-col items-center text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10">
-                  <AlertCircle className="h-8 w-8 text-destructive" />
+              {filePreviewUrl ? (
+                <div className="flex flex-col gap-6">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/10">
+                      <AlertCircle className="h-6 w-6 text-destructive" />
+                    </div>
+                    <div>
+                      <p className="text-lg font-medium">Extraction Incomplete</p>
+                      <p className="mt-1 text-sm text-muted-foreground max-w-md">
+                        {errorMessage || "AI could not read this document. Review the original below and try again."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="relative min-h-[360px] overflow-hidden rounded-xl border bg-background">
+                    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/40">
+                      {fileInfo?.type === "application/pdf" ? (
+                        <object
+                          data={filePreviewUrl}
+                          type="application/pdf"
+                          className="h-full w-full"
+                          aria-label="Uploaded document"
+                        />
+                      ) : (
+                        <img
+                          src={filePreviewUrl}
+                          alt={fileInfo?.name ? `Uploaded ${fileInfo.name}` : "Uploaded document"}
+                          className="h-full w-full object-contain"
+                        />
+                      )}
+                    </div>
+                    <div className="relative p-6 opacity-30">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-1/3">Field</TableHead>
+                            <TableHead>Value</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {errorFormFields.map((label) => (
+                            <TableRow key={label}>
+                              <TableCell className="font-medium">{label}</TableCell>
+                              <TableCell>
+                                <div className="h-9 w-full rounded-md border bg-muted/30" />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button onClick={handleReset} data-testid="button-try-again">
+                      Try Again
+                    </Button>
+                  </div>
                 </div>
-                <p className="mt-6 text-lg font-medium">
-                  Processing Failed
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground max-w-md">
-                  {errorMessage || "There was an error processing your file. Please try again."}
-                </p>
-                <Button onClick={handleReset} className="mt-6" data-testid="button-try-again">
-                  Try Again
-                </Button>
-              </div>
+              ) : (
+                <div className="flex flex-col items-center text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10">
+                    <AlertCircle className="h-8 w-8 text-destructive" />
+                  </div>
+                  <p className="mt-6 text-lg font-medium">
+                    Processing Failed
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground max-w-md">
+                    {errorMessage || "There was an error processing your file. Please try again."}
+                  </p>
+                  <Button onClick={handleReset} className="mt-6" data-testid="button-try-again">
+                    Try Again
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -415,83 +555,19 @@ VAT: ${editableData.currency} ${editableData.vatAmount?.toFixed(2) || "N/A"}`;
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    <TableRow>
-                      <TableCell className="font-medium">Vendor Name</TableCell>
-                      <TableCell>
-                        <Input
-                          value={editableData.vendorName}
-                          onChange={(e) => handleFieldChange("vendorName", e.target.value)}
-                          className="max-w-sm"
-                          data-testid="input-vendor-name"
-                        />
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Invoice Number</TableCell>
-                      <TableCell>
-                        <Input
-                          value={editableData.invoiceNumber}
-                          onChange={(e) => handleFieldChange("invoiceNumber", e.target.value)}
-                          className="max-w-sm"
-                          data-testid="input-invoice-number"
-                        />
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Invoice Date</TableCell>
-                      <TableCell>
-                        <Input
-                          type="date"
-                          value={editableData.invoiceDate}
-                          onChange={(e) => handleFieldChange("invoiceDate", e.target.value)}
-                          className="max-w-sm"
-                          data-testid="input-invoice-date"
-                        />
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Total Amount</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-muted-foreground">{editableData.currency}</span>
+                    {editableData.fields.map((field, index) => (
+                      <TableRow key={`${field.label}-${index}`}>
+                        <TableCell className="font-medium">{field.label}</TableCell>
+                        <TableCell>
                           <Input
-                            type="number"
-                            step="0.01"
-                            value={editableData.totalAmount}
-                            onChange={(e) => handleFieldChange("totalAmount", parseFloat(e.target.value) || 0)}
-                            className="max-w-32"
-                            data-testid="input-total-amount"
+                            value={formatFieldValue(field.value)}
+                            onChange={(e) => handleFieldChange(index, e.target.value)}
+                            className="max-w-sm"
+                            data-testid={`input-field-${index}`}
                           />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">VAT Amount</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-muted-foreground">{editableData.currency}</span>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={editableData.vatAmount || 0}
-                            onChange={(e) => handleFieldChange("vatAmount", parseFloat(e.target.value) || 0)}
-                            className="max-w-32"
-                            data-testid="input-vat-amount"
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Currency</TableCell>
-                      <TableCell>
-                        <Input
-                          value={editableData.currency}
-                          onChange={(e) => handleFieldChange("currency", e.target.value)}
-                          className="max-w-24"
-                          data-testid="input-currency"
-                        />
-                      </TableCell>
-                    </TableRow>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
 
@@ -503,23 +579,21 @@ VAT: ${editableData.currency} ${editableData.vatAmount?.toFixed(2) || "N/A"}`;
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Description</TableHead>
-                          <TableHead className="text-right">Qty</TableHead>
-                          <TableHead className="text-right">Unit Price</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
+                          {lineItemColumns.map((column) => (
+                            <TableHead key={column} className="text-left">
+                              {column}
+                            </TableHead>
+                          ))}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {editableData.lineItems.map((item, index) => (
                           <TableRow key={index}>
-                            <TableCell>{item.description}</TableCell>
-                            <TableCell className="text-right">{item.quantity}</TableCell>
-                            <TableCell className="text-right">
-                              {editableData.currency} {item.unitPrice.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {editableData.currency} {item.total.toFixed(2)}
-                            </TableCell>
+                            {lineItemColumns.map((column) => (
+                              <TableCell key={`${index}-${column}`}>
+                                {formatFieldValue(item[column] ?? null)}
+                              </TableCell>
+                            ))}
                           </TableRow>
                         ))}
                       </TableBody>

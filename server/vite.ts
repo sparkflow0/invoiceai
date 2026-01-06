@@ -7,6 +7,8 @@ import path from "path";
 import { nanoid } from "nanoid";
 
 const viteLogger = createLogger();
+const postcssWarning =
+  "A PostCSS plugin did not pass the `from` option to `postcss.parse`";
 
 export async function setupVite(server: Server, app: Express) {
   const serverOptions = {
@@ -20,6 +22,12 @@ export async function setupVite(server: Server, app: Express) {
     configFile: false,
     customLogger: {
       ...viteLogger,
+      warn: (msg, options) => {
+        if (msg.includes(postcssWarning)) {
+          return;
+        }
+        viteLogger.warn(msg, options);
+      },
       error: (msg, options) => {
         viteLogger.error(msg, options);
         process.exit(1);
