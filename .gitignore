@@ -4,4 +4,8 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
-.local.env
+.env
+.env.*
+!.env.example
+.env.local
+.config/replit/.semgrep/semgrep_rules.json
