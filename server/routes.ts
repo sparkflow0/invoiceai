@@ -3,15 +3,21 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import { uploadRequestSchema, type ExtractedData } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { z } from "zod";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(apiKey: string): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return openaiClient;
+}
 
 const processRequestSchema = z.object({
   fileDataUrl: z.string().min(1),
@@ -136,7 +142,7 @@ Return ONLY valid JSON, no explanation.`;
       throw new Error(`Unsupported file type: ${resolvedType}`);
     }
 
-    const response = await openai.responses.create({
+    const response = await getOpenAIClient(apiKey).responses.create({
       model: process.env.OPENAI_INVOICE_MODEL ?? "gpt-4.1-mini",
       input: [
         {
@@ -179,6 +185,11 @@ export async function registerRoutes(
   );
 
   if (authEnabled) {
+    // Lazy-load auth to avoid requiring DB config when auth is disabled.
+    const { setupAuth } = await import("./replit_integrations/auth/replitAuth");
+    const { registerAuthRoutes } = await import(
+      "./replit_integrations/auth/routes"
+    );
     await setupAuth(app);
     registerAuthRoutes(app);
   } else {
@@ -186,9 +197,7 @@ export async function registerRoutes(
       res.status(200).json(null);
     });
     app.get("/api/login", (_req, res) => {
-      res.status(501).json({
-        message: "Auth not configured. Set REPL_ID to enable login.",
-      });
+      res.redirect("/login");
     });
     app.get("/api/logout", (_req, res) => {
       res.redirect("/");

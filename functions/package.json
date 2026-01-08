@@ -1,0 +1,11 @@
+{
+  "name": "invoiceai-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-functions": "^4.9.0"
+  }
+}

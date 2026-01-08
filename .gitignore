@@ -9,3 +9,5 @@ vite.config.ts.*
 !.env.example
 .env.local
 .config/replit/.semgrep/semgrep_rules.json
+functions/lib
+functions/node_modules

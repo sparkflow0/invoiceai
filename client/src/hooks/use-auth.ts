@@ -1,47 +1,53 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, useCallback } from "react";
 import type { User } from "@shared/models/auth";
+import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
-async function fetchUser(): Promise<User | null> {
-  const response = await fetch("/api/auth/user", {
-    credentials: "include",
-  });
+function mapFirebaseUser(user: FirebaseUser): User {
+  const displayName = user.displayName?.trim();
+  const nameParts = displayName ? displayName.split(" ") : [];
+  const firstName = nameParts.length > 0 ? nameParts[0] : null;
+  const lastName =
+    nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
 
-  if (response.status === 401) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw new Error(`${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
+  return {
+    id: user.uid,
+    email: user.email ?? null,
+    firstName,
+    lastName,
+    profileImageUrl: user.photoURL ?? null,
+    createdAt: null,
+    updatedAt: null,
+  };
 }
 
 export function useAuth() {
-  const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery<User | null>({
-    queryKey: ["/api/auth/user"],
-    queryFn: fetchUser,
-    retry: false,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSuccess: () => {
-      queryClient.setQueryData(["/api/auth/user"], null);
-    },
-  });
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser ? mapFirebaseUser(firebaseUser) : null);
+      setIsLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  const logout = useCallback(async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut(auth);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }, []);
 
   return {
     user,
     isLoading,
     isAuthenticated: !!user,
-    logout: logoutMutation.mutate,
-    isLoggingOut: logoutMutation.isPending,
+    logout,
+    isLoggingOut,
   };
 }

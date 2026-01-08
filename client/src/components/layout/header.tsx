@@ -39,7 +39,7 @@ const navLinks = [
 export function Header() {
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const getInitials = () => {
@@ -142,18 +142,23 @@ export function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <a href="/api/logout" data-testid="button-logout">
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Log Out
-                    </a>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      logout();
+                    }}
+                    disabled={isLoggingOut}
+                    data-testid="button-logout"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    {isLoggingOut ? "Logging out..." : "Log Out"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
               <>
                 <Button variant="ghost" asChild className="hidden sm:inline-flex" data-testid="button-login">
-                  <a href="/api/login">Log In</a>
+                  <Link href="/login">Log In</Link>
                 </Button>
                 <Button asChild className="hidden sm:inline-flex" data-testid="button-upload-cta">
                   <Link href="/app">Upload Invoice</Link>
@@ -238,14 +243,25 @@ export function Header() {
                         Upload Invoice
                       </Link>
                     </Button>
-                    <Button variant="outline" asChild className="w-full" data-testid="mobile-button-logout">
-                      <a href="/api/logout">Log Out</a>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        logout();
+                        setMobileMenuOpen(false);
+                      }}
+                      disabled={isLoggingOut}
+                      data-testid="mobile-button-logout"
+                    >
+                      {isLoggingOut ? "Logging out..." : "Log Out"}
                     </Button>
                   </>
                 ) : (
                   <>
                     <Button asChild className="w-full" data-testid="mobile-button-login">
-                      <a href="/api/login">Log In</a>
+                      <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                        Log In
+                      </Link>
                     </Button>
                     <Button variant="outline" asChild className="w-full" data-testid="mobile-button-upload">
                       <Link href="/app" onClick={() => setMobileMenuOpen(false)}>
