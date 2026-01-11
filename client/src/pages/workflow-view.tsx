@@ -71,7 +71,7 @@ export default function WorkflowView() {
                     <p className="text-muted-foreground flex items-center gap-2">
                         ID: <span className="font-mono text-xs bg-muted px-2 py-1 rounded">{id}</span>
                         <Badge variant={instance?.status === "closed_approved" ? "default" : "secondary"}>
-                            {instance?.status.toUpperCase()}
+                            {(instance?.status || "unknown").toUpperCase()}
                         </Badge>
                     </p>
                 </div>
@@ -142,7 +142,7 @@ export default function WorkflowView() {
                             </CardHeader>
                             <CardContent>
                                 <p className="text-blue-900 leading-relaxed">{instance.data.summaryFinance}</p>
-                                {instance.data.flags?.length > 0 && (
+                                {instance.data?.flags && instance.data.flags.length > 0 && (
                                     <div className="mt-4 flex flex-wrap gap-2">
                                         {instance.data.flags.map((flag: string, i: number) => (
                                             <Badge key={i} variant="outline" className="bg-white text-amber-700 border-amber-200 flex items-center gap-1">
@@ -169,7 +169,7 @@ export default function WorkflowView() {
                                     <Activity className="w-6 h-6" />
                                 </div>
                                 <div>
-                                    <p className="text-xl font-bold capitalize">{currentStep.replace("_", " ")}</p>
+                                    <p className="text-xl font-bold capitalize">{currentStep?.replace("_", " ") ?? "Unknown"}</p>
                                     <p className="text-sm text-muted-foreground">{instance?.status === "active" ? "In Progress" : "Completed"}</p>
                                 </div>
                             </div>
@@ -191,7 +191,7 @@ export default function WorkflowView() {
                                             {log.userId === "system" ? <Bot className="w-6 h-6 text-primary bg-background p-1" /> : <User className="w-6 h-6 text-muted-foreground bg-background p-1" />}
                                         </div>
                                         <div>
-                                            <p className="text-sm font-bold">{log.action.replace("_", " ").toUpperCase()}</p>
+                                            <p className="text-sm font-bold">{log.action?.replace("_", " ")?.toUpperCase() ?? "UNKNOWN"}</p>
                                             <p className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
                                         </div>
                                     </div>

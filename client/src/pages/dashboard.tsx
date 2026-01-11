@@ -6,14 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  FileText, 
-  Upload, 
-  History, 
+import {
+  FileText,
+  Upload,
+  History,
   LogOut,
   Clock,
   CheckCircle,
-  TrendingUp
+  TrendingUp,
+  GitGraph
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -93,9 +94,9 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={() => logout()} 
+          <Button
+            variant="outline"
+            onClick={() => logout()}
             disabled={isLoggingOut}
             className="gap-2"
             data-testid="button-logout"
@@ -122,7 +123,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-3">
           <Card className="hover-elevate">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -155,6 +156,23 @@ export default function Dashboard() {
               </div>
               <Button asChild variant="outline" className="w-full">
                 <Link href="/history">View history</Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="hover-elevate">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GitGraph className="h-5 w-5 text-primary" />
+                Workflows
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                Manage and track approval workflows for your invoices.
+              </p>
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/workflows/new">Create Workflow</Link>
               </Button>
             </CardContent>
           </Card>

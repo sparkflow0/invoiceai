@@ -40,6 +40,7 @@ import {
 import { getStripeClient, getStripePriceId, getStripeWebhookSecret } from "./billing";
 import { getHistoryEntryForUser, listHistoryEntriesForUser, saveHistoryEntryForUser } from "./history";
 import { workflowEngine } from "./workflow/engine";
+import { registerWorkflowRoutes } from "./workflow/routes";
 import { firestoreAdd, firestoreUpdate, firestoreGet, firestoreQuery } from "./firebase-db";
 
 let openaiClient: OpenAI | null = null;
@@ -2741,6 +2742,8 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to export Excel" });
     }
   });
+
+  registerWorkflowRoutes(app);
 
   return httpServer;
 }

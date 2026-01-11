@@ -3,8 +3,13 @@ import { type WorkflowInstance, type AuditLog, type Task } from "@shared/schema"
 import { WorkflowDefinition, WorkflowStep } from "./types";
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from 'url';
 import { runSystemAction } from "./actions";
+
 import { notifyTaskAssigned, notifyRequestInfo } from "./notifications";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class WorkflowEngine {
     private definitions: Map<string, WorkflowDefinition> = new Map();

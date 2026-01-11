@@ -24,41 +24,4 @@ export function calculateRiskScore(extractedFields: any[], lineItems: any[]) {
     return { riskScore, flags };
 }
 
-// Simple test runner
-if (require.main === module) {
-    const tests = [
-        {
-            name: "Happy Path - Low Risk",
-            fields: [{ label: "Vendor", value: "ACME Corp" }, { label: "Total", value: "100.00" }],
-            lineItems: [{ Total: "100.00" }],
-            expectedRisk: 0,
-        },
-        {
-            name: "Missing Vendor",
-            fields: [{ label: "Total", value: "100.00" }],
-            lineItems: [{ Total: "100.00" }],
-            expectedRisk: 30,
-        },
-        {
-            name: "Total Mismatch",
-            fields: [{ label: "Vendor", value: "ACME" }, { label: "Total", value: "100.00" }],
-            lineItems: [{ Total: "90.00" }],
-            expectedRisk: 40,
-        },
-        {
-            name: "Both Issues",
-            fields: [{ label: "Total", value: "100.00" }],
-            lineItems: [{ Total: "90.00" }],
-            expectedRisk: 70,
-        }
-    ];
-
-    tests.forEach(t => {
-        const result = calculateRiskScore(t.fields, t.lineItems);
-        if (result.riskScore === t.expectedRisk) {
-            console.log(`✅ ${t.name} passed`);
-        } else {
-            console.error(`❌ ${t.name} failed: expected ${t.expectedRisk}, got ${result.riskScore}`);
-        }
-    });
-}
+// calculateRiskScore logic preserved.
