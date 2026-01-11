@@ -22,7 +22,7 @@ async function buildFunctions() {
     target: "node20",
     format: "esm",
     banner: {
-      js: "import { createRequire } from 'module'; import { fileURLToPath } from 'url'; import { dirname } from 'path'; const require = createRequire(import.meta.url); const __filename = fileURLToPath(import.meta.url); const __dirname = dirname(__filename);",
+      js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
     },
     sourcemap: true,
     outfile: outFile,
