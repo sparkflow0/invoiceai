@@ -3,13 +3,10 @@ import { type WorkflowInstance, type AuditLog, type Task } from "@shared/schema"
 import { WorkflowDefinition, WorkflowStep } from "./types";
 import * as fs from "fs";
 import * as path from "path";
-import { fileURLToPath } from 'url';
+
 import { runSystemAction } from "./actions";
 
 import { notifyTaskAssigned, notifyRequestInfo } from "./notifications";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export class WorkflowEngine {
     private definitions: Map<string, WorkflowDefinition> = new Map();
@@ -19,8 +16,23 @@ export class WorkflowEngine {
     }
 
     private loadDefinitions() {
-        const definitionsDir = path.join(__dirname, "definitions");
-        if (!fs.existsSync(definitionsDir)) return;
+        const potentialPaths = [
+            path.join(process.cwd(), "server", "workflow", "definitions"),
+            path.join(process.cwd(), "lib", "definitions")
+        ];
+
+        let definitionsDir = "";
+        for (const p of potentialPaths) {
+            if (fs.existsSync(p)) {
+                definitionsDir = p;
+                break;
+            }
+        }
+
+        if (!definitionsDir) {
+            console.warn("Workflow definitions not found in:", potentialPaths);
+            return;
+        }
 
         const files = fs.readdirSync(definitionsDir);
         for (const file of files) {
