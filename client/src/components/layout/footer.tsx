@@ -4,6 +4,7 @@ import { FileText } from "lucide-react";
 const footerLinks = {
   product: [
     { href: "/app", label: "Upload Invoice" },
+    { href: "/tools/pdf-tools", label: "PDF Tools" },
     { href: "/tools/invoice-pdf-to-excel", label: "PDF to Excel" },
     { href: "/tools/receipt-to-excel", label: "Receipt to Excel" },
     { href: "/tools/extract-vat", label: "VAT Extraction" },

@@ -17,6 +17,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { PageMeta } from "@/components/seo/page-meta";
+import { FaqSchema } from "@/components/seo/faq-schema";
+
+const metaDescription =
+  "Extract VAT and tax amounts from invoices with AI. Capture VAT rates, net, and gross totals quickly.";
 
 const useCases = [
   {
@@ -63,6 +68,11 @@ const faqs = [
 export default function ExtractVat() {
   return (
     <div className="py-20 md:py-32">
+      <PageMeta
+        title="Extract VAT From Invoice | InvoiceAI"
+        description={metaDescription}
+      />
+      <FaqSchema faqs={faqs} />
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-3xl text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">

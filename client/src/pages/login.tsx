@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
+  isSignInWithEmailLink,
+  sendSignInLinkToEmail,
+  signInWithEmailLink,
   signInWithPopup,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -13,16 +14,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
-type AuthMode = "signin" | "signup";
+const EMAIL_STORAGE_KEY = "invoiceai_signin_email";
+const NEXT_STORAGE_KEY = "invoiceai_signin_next";
 
 export default function Login() {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [mode, setMode] = useState<AuthMode>("signin");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
+  const [needsEmailForLink, setNeedsEmailForLink] = useState(false);
+  const nextParam =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("next") || ""
+      : "";
+  const redirectPath = nextParam || "/dashboard";
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -30,12 +37,43 @@ export default function Login() {
     }
   }, [isLoading, user, setLocation]);
 
-  const handleEmailAuth = async (event: React.FormEvent) => {
+  useEffect(() => {
+    const maybeCompleteSignIn = async () => {
+      if (!isSignInWithEmailLink(auth, window.location.href)) return;
+      const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY) || "";
+      if (!storedEmail) {
+        setNeedsEmailForLink(true);
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        await signInWithEmailLink(auth, storedEmail, window.location.href);
+        window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+        const storedNext = window.localStorage.getItem(NEXT_STORAGE_KEY);
+        window.localStorage.removeItem(NEXT_STORAGE_KEY);
+        setLocation(storedNext || redirectPath);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to complete sign-in.";
+        toast({
+          title: "Sign in failed",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    maybeCompleteSignIn();
+  }, [setLocation, toast]);
+
+  const handleSendMagicLink = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!email || !password) {
+    if (!email) {
       toast({
-        title: "Missing details",
-        description: "Enter an email and password to continue.",
+        title: "Email required",
+        description: "Enter your email address to receive a magic link.",
         variant: "destructive",
       });
       return;
@@ -43,15 +81,53 @@ export default function Login() {
 
     setIsSubmitting(true);
     try {
-      if (mode === "signup") {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
+      await sendSignInLinkToEmail(auth, email, {
+        url: `${window.location.origin}/login`,
+        handleCodeInApp: true,
+      });
+      window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
+      if (nextParam) {
+        window.localStorage.setItem(NEXT_STORAGE_KEY, nextParam);
       }
-      setLocation("/dashboard");
+      setLinkSent(true);
+      toast({
+        title: "Magic link sent",
+        description: "Check your inbox to finish signing in.",
+      });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Authentication failed.";
+        error instanceof Error ? error.message : "Unable to send magic link.";
+      toast({
+        title: "Sign in failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCompleteLink = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!email) {
+      toast({
+        title: "Email required",
+        description: "Enter the email you used to request the link.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await signInWithEmailLink(auth, email, window.location.href);
+      window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+      const storedNext = window.localStorage.getItem(NEXT_STORAGE_KEY);
+      window.localStorage.removeItem(NEXT_STORAGE_KEY);
+      setLocation(storedNext || redirectPath);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to complete sign-in.";
       toast({
         title: "Sign in failed",
         description: message,
@@ -67,7 +143,7 @@ export default function Login() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-      setLocation("/dashboard");
+      setLocation(redirectPath);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Google sign-in failed.";
@@ -87,7 +163,7 @@ export default function Login() {
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl">
-              {mode === "signin" ? "Sign in to InvoiceAI" : "Create your account"}
+              Sign in to InvoiceAI
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -107,7 +183,10 @@ export default function Login() {
               <div className="h-px flex-1 bg-border" />
             </div>
 
-            <form className="space-y-4" onSubmit={handleEmailAuth}>
+            <form
+              className="space-y-4"
+              onSubmit={needsEmailForLink ? handleCompleteLink : handleSendMagicLink}
+            >
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="email">
                   Email
@@ -121,41 +200,24 @@ export default function Login() {
                   disabled={isSubmitting}
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="password">
-                  Password
-                </label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter your password"
-                  disabled={isSubmitting}
-                />
-              </div>
               <Button className="w-full" type="submit" disabled={isSubmitting}>
-                {isSubmitting
-                  ? "Please wait..."
-                  : mode === "signin"
-                    ? "Sign In"
-                    : "Create Account"}
+                {needsEmailForLink ? "Finish Sign In" : "Email Me a Magic Link"}
               </Button>
+              {linkSent && !needsEmailForLink && (
+                <p className="text-center text-xs text-muted-foreground">
+                  Check your inbox for the sign-in link.
+                </p>
+              )}
             </form>
 
             <div className="text-center text-sm text-muted-foreground">
-              {mode === "signin" ? "Need an account?" : "Already have an account?"}{" "}
               <button
                 type="button"
                 className="font-medium text-primary hover:underline"
-                onClick={() =>
-                  setMode((current) =>
-                    current === "signin" ? "signup" : "signin",
-                  )
-                }
+                onClick={() => setLocation("/app")}
                 disabled={isSubmitting}
               >
-                {mode === "signin" ? "Create one" : "Sign in"}
+                Continue without signing in
               </button>
             </div>
           </CardContent>

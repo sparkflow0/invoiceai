@@ -17,6 +17,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { PageMeta } from "@/components/seo/page-meta";
+import { FaqSchema } from "@/components/seo/faq-schema";
+
+const metaDescription =
+  "Automate document data extraction with AI. Convert invoices, receipts, and statements to structured data.";
 
 const useCases = [
   {
@@ -82,6 +87,8 @@ const faqs = [
 export default function DataExtraction() {
   return (
     <div className="py-20 md:py-32">
+      <PageMeta title="Document Data Extraction | InvoiceAI" description={metaDescription} />
+      <FaqSchema faqs={faqs} />
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-3xl text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">

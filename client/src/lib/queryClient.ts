@@ -1,9 +1,55 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { auth } from "@/lib/firebase";
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  details?: unknown;
+
+  constructor(status: number, message: string, code?: string, details?: unknown) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+async function getAuthToken(): Promise<string | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+  try {
+    return await user.getIdToken();
+  } catch (error) {
+    return null;
+  }
+}
+
+async function readErrorPayload(
+  res: Response,
+): Promise<{ message?: string; code?: string; details?: unknown } | null> {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      return (await res.json()) as { message?: string; code?: string; details?: unknown };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as { message?: string; code?: string; details?: unknown };
+  } catch (error) {
+    return { message: text };
+  }
+}
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const payload = await readErrorPayload(res);
+    const message = payload?.message || res.statusText;
+    throw new ApiError(res.status, message, payload?.code, payload?.details);
   }
 }
 
@@ -12,9 +58,13 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const token = await getAuthToken();
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -29,7 +79,9 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const token = await getAuthToken();
     const res = await fetch(queryKey.join("/") as string, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       credentials: "include",
     });
 

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createApp, log } from "./app";
 import { serveStatic } from "./static";
+import { cleanupExpiredDocuments } from "./workflow/ttl-job";
 
 (async () => {
   const { app, httpServer } = await createApp();
@@ -30,4 +31,9 @@ import { serveStatic } from "./static";
   httpServer.listen(listenOptions, () => {
     log(`serving on port ${port}`);
   });
+
+  // Simple interval-based TTL cleanup (every 12 hours)
+  setInterval(() => {
+    cleanupExpiredDocuments();
+  }, 12 * 60 * 60 * 1000);
 })();

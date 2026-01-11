@@ -18,6 +18,10 @@
         "function": "api"
       },
       {
+        "source": "/admin/**",
+        "function": "api"
+      },
+      {
         "source": "/objects/**",
         "function": "api"
       },

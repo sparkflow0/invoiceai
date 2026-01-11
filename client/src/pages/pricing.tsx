@@ -1,7 +1,17 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { CheckCircle, X } from "lucide-react";
+import { apiRequest, ApiError } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { trackEvent } from "@/lib/analytics";
+import { PageMeta } from "@/components/seo/page-meta";
+import { FaqSchema } from "@/components/seo/faq-schema";
+
+const metaDescription =
+  "Compare Free and Pro plans for InvoiceAI. Upgrade for unlimited processing, bulk uploads, and history.";
 
 const plans = [
   {
@@ -14,6 +24,7 @@ const plans = [
       { text: "3 documents per day", included: true },
       { text: "PDF, JPG, PNG support", included: true },
       { text: "Excel & CSV export", included: true },
+      { text: "Document history", included: false },
       { text: "Basic OCR accuracy", included: true },
       { text: "Email support", included: false },
       { text: "API access", included: false },
@@ -33,10 +44,11 @@ const plans = [
       { text: "Unlimited documents", included: true },
       { text: "PDF, JPG, PNG support", included: true },
       { text: "Excel & CSV export", included: true },
+      { text: "Document history (30-90 days)", included: true },
       { text: "Enhanced AI accuracy", included: true },
       { text: "Priority email support", included: true },
       { text: "API access", included: true },
-      { text: "Bulk upload (up to 50)", included: true },
+      { text: "Bulk upload (up to 10)", included: true },
     ],
     cta: "Start Pro Trial",
     href: "/app",
@@ -52,6 +64,7 @@ const plans = [
       { text: "No monthly commitment", included: true },
       { text: "PDF, JPG, PNG support", included: true },
       { text: "Excel & CSV export", included: true },
+      { text: "Document history", included: false },
       { text: "Enhanced AI accuracy", included: true },
       { text: "Email support", included: true },
       { text: "API access", included: true },
@@ -87,8 +100,44 @@ const faqs = [
 ];
 
 export default function Pricing() {
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+
+  const handleUpgrade = async () => {
+    void trackEvent("upgrade_click");
+    if (!user) {
+      setLocation("/login?next=/pricing");
+      return;
+    }
+
+    setIsCheckoutLoading(true);
+    try {
+      const response = await apiRequest("POST", "/api/billing/checkout");
+      const data = (await response.json()) as { url?: string };
+      if (data.url) {
+        window.location.assign(data.url);
+        return;
+      }
+      throw new Error("Checkout URL not returned.");
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : "Unable to start checkout.";
+      toast({
+        title: "Upgrade failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsCheckoutLoading(false);
+    }
+  };
+
   return (
     <div className="py-20 md:py-32">
+      <PageMeta title="Pricing | InvoiceAI" description={metaDescription} />
+      <FaqSchema faqs={faqs} />
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-2xl text-center">
           <h1 className="text-4xl font-bold md:text-5xl" data-testid="text-pricing-title">
@@ -151,10 +200,16 @@ export default function Pricing() {
                 <Button
                   className="mt-8 w-full"
                   variant={plan.highlighted ? "default" : "outline"}
-                  asChild
                   data-testid={`button-plan-${plan.id}`}
+                  onClick={plan.id === "pro" ? handleUpgrade : undefined}
+                  disabled={plan.id === "pro" && isCheckoutLoading}
+                  asChild={plan.id !== "pro"}
                 >
-                  <Link href={plan.href}>{plan.cta}</Link>
+                  {plan.id === "pro" ? (
+                    <span>{isCheckoutLoading ? "Redirecting..." : plan.cta}</span>
+                  ) : (
+                    <Link href={plan.href}>{plan.cta}</Link>
+                  )}
                 </Button>
               </CardContent>
             </Card>

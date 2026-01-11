@@ -12,7 +12,8 @@ import {
   ChevronDown,
   User,
   LogOut,
-  LayoutDashboard
+  LayoutDashboard,
+  History
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const toolLinks = [
+  { href: "/tools/pdf-tools", label: "PDF Tools" },
   { href: "/tools/invoice-pdf-to-excel", label: "Invoice PDF to Excel" },
   { href: "/tools/receipt-to-excel", label: "Receipt to Excel" },
   { href: "/tools/extract-vat", label: "Extract VAT from Invoice" },
@@ -136,6 +138,12 @@ export function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
+                    <Link href="/history" data-testid="link-history">
+                      <History className="mr-2 h-4 w-4" />
+                      History
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link href="/app" data-testid="link-upload">
                       <FileText className="mr-2 h-4 w-4" />
                       Upload Invoice
@@ -205,6 +213,14 @@ export function Header() {
                     data-testid="mobile-link-dashboard"
                   >
                     Dashboard
+                  </Link>
+                  <Link
+                    href="/history"
+                    className="rounded-md px-3 py-2 text-sm hover-elevate"
+                    onClick={() => setMobileMenuOpen(false)}
+                    data-testid="mobile-link-history"
+                  >
+                    History
                   </Link>
                   <div className="my-2 border-t" />
                 </>

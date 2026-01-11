@@ -1,0 +1,74 @@
+{
+    "id": "invoice_approval",
+    "name": "AI-Agent-Driven Invoice Approval",
+    "version": "2.0.0",
+    "initialStep": "extraction",
+    "steps": {
+        "extraction": {
+            "type": "system_action",
+            "action": "run_extractor",
+            "nextStep": "compliance"
+        },
+        "compliance": {
+            "type": "system_action",
+            "action": "run_compliance",
+            "nextStep": "routing"
+        },
+        "routing": {
+            "type": "system_action",
+            "action": "run_router",
+            "nextStep": "dispatch"
+        },
+        "dispatch": {
+            "type": "system_action",
+            "action": "route_dispatch"
+        },
+        "dept_review": {
+            "type": "user_action",
+            "role": "dept_review",
+            "actions": {
+                "approve": "finance_approval",
+                "reject": "closed_rejected",
+                "request_info": "manual_edit"
+            }
+        },
+        "finance_approval": {
+            "type": "user_action",
+            "role": "finance_approval",
+            "actions": {
+                "approve": "archive",
+                "reject": "closed_rejected",
+                "request_info": "manual_edit"
+            }
+        },
+        "senior_approval": {
+            "type": "user_action",
+            "role": "senior_approval",
+            "actions": {
+                "approve": "archive",
+                "reject": "closed_rejected",
+                "request_info": "manual_edit"
+            }
+        },
+        "manual_edit": {
+            "type": "user_action",
+            "role": "requester",
+            "actions": {
+                "resubmit": "extraction"
+            }
+        },
+        "archive": {
+            "type": "system_action",
+            "action": "archive",
+            "nextStep": "closed_approved"
+        },
+        "closed_approved": {
+            "type": "terminal",
+            "status": "closed_approved"
+        },
+        "closed_rejected": {
+            "type": "terminal",
+            "status": "closed_rejected"
+        }
+    }
+}

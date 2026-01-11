@@ -153,6 +153,9 @@ export default function Dashboard() {
                 <p>No recent extractions</p>
                 <p className="text-sm">Upload your first invoice to get started</p>
               </div>
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/history">View history</Link>
+              </Button>
             </CardContent>
           </Card>
         </div>

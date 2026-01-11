@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageMeta } from "@/components/seo/page-meta";
 import { 
   Upload, 
   Zap, 
@@ -14,6 +15,9 @@ import {
   Lock,
   ArrowRight
 } from "lucide-react";
+
+const metaDescription =
+  "AI-powered invoice and receipt data extraction. Convert PDFs and images to Excel or CSV in seconds.";
 
 const steps = [
   {
@@ -75,6 +79,10 @@ const trustBadges = [
 export default function Home() {
   return (
     <div className="flex flex-col">
+      <PageMeta
+        title="InvoiceAI - Turn Invoices into Structured Data in Seconds"
+        description={metaDescription}
+      />
       <section className="relative overflow-hidden py-20 md:py-32">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent" />
         <div className="relative mx-auto max-w-7xl px-6">

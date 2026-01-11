@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://invoice-ai-1.web.app/sitemap.xml

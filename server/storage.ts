@@ -5,7 +5,13 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: UpsertUser): Promise<User>;
-  createSession(fileName: string, fileType: string): Promise<ProcessingSession>;
+  createSession(
+    fileName: string,
+    fileType: string,
+    fileSize?: number,
+    userId?: string,
+    objectPath?: string,
+  ): Promise<ProcessingSession>;
   getSession(id: string): Promise<ProcessingSession | undefined>;
   updateSession(id: string, updates: Partial<ProcessingSession>): Promise<ProcessingSession | undefined>;
   deleteSession(id: string): Promise<boolean>;
@@ -45,12 +51,21 @@ export class MemStorage implements IStorage {
     return user;
   }
 
-  async createSession(fileName: string, fileType: string): Promise<ProcessingSession> {
+  async createSession(
+    fileName: string,
+    fileType: string,
+    fileSize?: number,
+    userId?: string,
+    objectPath?: string,
+  ): Promise<ProcessingSession> {
     const id = randomUUID();
     const session: ProcessingSession = {
       id,
       fileName,
       fileType,
+      fileSize,
+      userId,
+      objectPath,
       status: "uploading",
     };
     this.sessions.set(id, session);
