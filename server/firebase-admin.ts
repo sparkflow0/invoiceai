@@ -22,12 +22,23 @@ export function getFirebaseApp(): admin.app.App | null {
   if (firebaseInitError) return null;
 
   try {
+    if (admin.apps.length > 0) {
+      firebaseApp = admin.app();
+      return firebaseApp;
+    }
+
     const config = readFirebaseConfig();
-    firebaseApp = admin.initializeApp({
+    const appConfig: admin.AppOptions = {
       credential: admin.credential.applicationDefault(),
-      projectId: process.env.GCLOUD_PROJECT ?? config?.projectId,
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? config?.storageBucket,
-    });
+    };
+
+    const projectId = process.env.GCLOUD_PROJECT ?? config?.projectId;
+    if (projectId) appConfig.projectId = projectId;
+
+    const storageBucket = process.env.FIREBASE_STORAGE_BUCKET ?? config?.storageBucket;
+    if (storageBucket) appConfig.storageBucket = storageBucket;
+
+    firebaseApp = admin.initializeApp(appConfig);
     return firebaseApp;
   } catch (error) {
     firebaseInitError = error as Error;
