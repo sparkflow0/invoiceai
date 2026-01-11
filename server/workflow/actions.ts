@@ -1,6 +1,5 @@
-import { db } from "../db";
-import { workflowInstances, invoiceRecords, documents, auditLogs, tasks } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { firestoreAdd, firestoreUpdate, firestoreGet, firestoreQuery } from "../firebase-db";
+import { type WorkflowInstance, type AuditLog, type Task, type Document, type InvoiceRecord } from "@shared/schema";
 import { extractorAgent, complianceAgent, routerAgent } from "./agents";
 import { workflowEngine } from "./engine";
 import { fetchUploadBuffer } from "../uploads";
@@ -32,16 +31,13 @@ export async function runSystemAction(instance: any, step: any, userId: string) 
         }
     } catch (error) {
         console.error(`Error in system action ${action}:`, error);
-        // Move to error state or retry? For now, just mark as error
-        await db.update(workflowInstances)
-            .set({ status: "error", updatedAt: sql`NOW()` })
-            .where(eq(workflowInstances.id, instance.id));
+        await firestoreUpdate("workflow_instances", instance.id, { status: "error" });
     }
 }
 
 async function handleExtractor(instance: any, userId: string) {
     const documentId = instance.data.documentId;
-    const [doc] = await db.select().from(documents).where(eq(documents.id, documentId));
+    const doc = await firestoreGet("documents", documentId) as any;
     if (!doc) throw new Error("Document not found");
 
     const { buffer } = await fetchUploadBuffer(doc.objectPath);
@@ -106,17 +102,13 @@ async function handleDispatch(instance: any, userId: string) {
         nextStep = "dept_review";
     }
 
-    // We need to manually set the next step here because route_dispatch is a branching point
     const previousState = { step: instance.currentStep, data: instance.data };
 
-    await db.update(workflowInstances)
-        .set({
-            currentStep: nextStep,
-            updatedAt: sql`NOW()`,
-        })
-        .where(eq(workflowInstances.id, instance.id));
+    await firestoreUpdate("workflow_instances", instance.id, {
+        currentStep: nextStep,
+    });
 
-    await db.insert(auditLogs).values({
+    await firestoreAdd("audit_logs", {
         instanceId: instance.id,
         userId: "system",
         action: "route_dispatch",
@@ -125,7 +117,6 @@ async function handleDispatch(instance: any, userId: string) {
         metadata: { riskScore },
     });
 
-    // Since it's now a user_action step, processStep will create a task
     await workflowEngine.processStep(instance.id, "system");
 }
 
@@ -133,7 +124,7 @@ async function handleArchive(instance: any, userId: string) {
     const { extractedFields, lineItems, riskScore, flags, summaryFinance, summaryRequester, documentId } = instance.data;
 
     // Create final invoice record
-    const [record] = await db.insert(invoiceRecords).values({
+    const record = await firestoreAdd("invoice_records", {
         instanceId: instance.id,
         documentId,
         extractedFields,
@@ -142,25 +133,24 @@ async function handleArchive(instance: any, userId: string) {
         flags,
         summaryFinance,
         summaryRequester,
-    }).returning();
+    });
 
     // Audit log entry for archive
-    const [log] = await db.insert(auditLogs).values({
+    const log = await firestoreAdd("audit_logs", {
         instanceId: instance.id,
         userId: "system",
         action: "archived",
         previousState: instance.data,
         newState: { status: "closed_approved" },
         metadata: { recordId: record.id },
-    }).returning();
+    });
 
     // Update record with log association
-    await db.update(invoiceRecords).set({ auditLogId: log.id }).where(eq(invoiceRecords.id, record.id));
+    await firestoreUpdate("invoice_records", record.id, { auditLogId: log.id });
 
     // Mark workflow as closed_approved
-    await db.update(workflowInstances)
-        .set({ status: "closed_approved", currentStep: "closed_approved", updatedAt: sql`NOW()` })
-        .where(eq(workflowInstances.id, instance.id));
-
-    // Files are marked for TTL in the documents table, a separate job handles deletion
+    await firestoreUpdate("workflow_instances", instance.id, {
+        status: "closed_approved",
+        currentStep: "closed_approved",
+    });
 }

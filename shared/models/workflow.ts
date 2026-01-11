@@ -1,104 +1,91 @@
-import { pgTable, text, timestamp, integer, jsonb, serial, uuid, boolean, pgEnum } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const workflowStatusEnum = pgEnum("workflow_status", ["active", "completed", "error", "closed_approved", "closed_rejected"]);
-export const taskStatusEnum = pgEnum("task_status", ["pending", "completed", "cancelled"]);
-
-export const documents = pgTable("documents", {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    fileName: text("file_name").notNull(),
-    fileType: text("file_type").notNull(),
-    fileSize: integer("file_size"),
-    objectPath: text("object_path").notNull(),
-    storageUrl: text("storage_url"),
-    userId: text("user_id"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    expiresAt: timestamp("expires_at"), // For TTL
+export const documentSchema = z.object({
+    id: z.string(),
+    fileName: z.string(),
+    fileType: z.string(),
+    fileSize: z.number().optional().nullable(),
+    objectPath: z.string(),
+    storageUrl: z.string().optional().nullable(),
+    userId: z.string().optional().nullable(),
+    createdAt: z.union([z.date(), z.string(), z.number()]),
+    expiresAt: z.union([z.date(), z.string(), z.number()]).optional().nullable(),
 });
 
-export const workflowInstances = pgTable("workflow_instances", {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    workflowType: text("workflow_type").notNull(), // e.g., "invoice_approval"
-    currentStep: text("current_step").notNull(),
-    status: workflowStatusEnum("status").default("active").notNull(),
-    data: jsonb("data").default({}).notNull(), // Shared state/context
-    userId: text("user_id"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+export const workflowInstanceSchema = z.object({
+    id: z.string(),
+    workflowType: z.string(),
+    currentStep: z.string(),
+    status: z.enum(["active", "completed", "error", "closed_approved", "closed_rejected"]),
+    data: z.any(),
+    userId: z.string().optional().nullable(),
+    createdAt: z.union([z.date(), z.string(), z.number()]),
+    updatedAt: z.union([z.date(), z.string(), z.number()]),
 });
 
-export const invoiceRecords = pgTable("invoice_records", {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    documentId: uuid("document_id").references(() => documents.id),
-    instanceId: uuid("instance_id").references(() => workflowInstances.id).notNull(),
-    extractedFields: jsonb("extracted_fields").notNull(),
-    lineItems: jsonb("line_items"),
-    riskScore: integer("risk_score"),
-    flags: jsonb("flags").default([]),
-    summaryFinance: text("summary_finance"),
-    summaryRequester: text("summary_requester"),
-    auditLogId: uuid("audit_log_id"), // Reference to final archive log
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+export const invoiceRecordSchema = z.object({
+    id: z.string(),
+    documentId: z.string().optional().nullable(),
+    instanceId: z.string(),
+    extractedFields: z.any(),
+    lineItems: z.any().optional().nullable(),
+    riskScore: z.number().optional().nullable(),
+    flags: z.array(z.string()).default([]),
+    summaryFinance: z.string().optional().nullable(),
+    summaryRequester: z.string().optional().nullable(),
+    auditLogId: z.string().optional().nullable(),
+    createdAt: z.union([z.date(), z.string(), z.number()]),
 });
 
-export const tasks = pgTable("tasks", {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    instanceId: uuid("instance_id").references(() => workflowInstances.id).notNull(),
-    role: text("role").notNull(), // e.g., "finance", "requester", "dept_head"
-    assignedTo: text("assigned_to"), // userId
-    status: taskStatusEnum("status").default("pending").notNull(),
-    actionType: text("action_type").notNull(), // e.g., "manual_review", "edit_fields"
-    metadata: jsonb("metadata").default({}).notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+export const taskSchema = z.object({
+    id: z.string(),
+    instanceId: z.string(),
+    role: z.string(),
+    assignedTo: z.string().optional().nullable(),
+    status: z.enum(["pending", "completed", "cancelled"]),
+    actionType: z.string(),
+    metadata: z.any(),
+    createdAt: z.union([z.date(), z.string(), z.number()]),
+    updatedAt: z.union([z.date(), z.string(), z.number()]),
 });
 
-export const auditLogs = pgTable("audit_logs", {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    instanceId: uuid("instance_id").references(() => workflowInstances.id).notNull(),
-    userId: text("user_id"), // system or actual user
-    action: text("action").notNull(), // e.g., "step_advance", "agent_run", "user_approval"
-    previousState: jsonb("previous_state"),
-    newState: jsonb("new_state"),
-    metadata: jsonb("metadata").default({}).notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+export const auditLogSchema = z.object({
+    id: z.string(),
+    instanceId: z.string(),
+    userId: z.string().optional().nullable(),
+    action: z.string(),
+    previousState: z.any().optional().nullable(),
+    newState: z.any().optional().nullable(),
+    metadata: z.any(),
+    createdAt: z.union([z.date(), z.string(), z.number()]),
 });
 
-export const notifications = pgTable("notifications", {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: text("user_id").notNull(),
-    title: text("title").notNull(),
-    message: text("message").notNull(),
-    link: text("link"),
-    read: boolean("read").default(false).notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+export const notificationSchema = z.object({
+    id: z.string(),
+    userId: z.string(),
+    title: z.string(),
+    message: z.string(),
+    link: z.string().optional().nullable(),
+    read: z.boolean().default(false),
+    createdAt: z.union([z.date(), z.string(), z.number()]),
 });
 
-// Zod Schemas
-export const insertNotificationSchema = createInsertSchema(notifications);
-export const selectNotificationSchema = createSelectSchema(notifications);
+export type Document = z.infer<typeof documentSchema>;
+export type WorkflowInstance = z.infer<typeof workflowInstanceSchema>;
+export type InvoiceRecord = z.infer<typeof invoiceRecordSchema>;
+export type Task = z.infer<typeof taskSchema>;
+export type AuditLog = z.infer<typeof auditLogSchema>;
+export type Notification = z.infer<typeof notificationSchema>;
 
-export type Notification = typeof notifications.$inferSelect;
-export const insertDocumentSchema = createInsertSchema(documents);
-export const selectDocumentSchema = createSelectSchema(documents);
-
-export const insertWorkflowInstanceSchema = createInsertSchema(workflowInstances);
-export const selectWorkflowInstanceSchema = createSelectSchema(workflowInstances);
-
-export const insertInvoiceRecordSchema = createInsertSchema(invoiceRecords);
-export const selectInvoiceRecordSchema = createSelectSchema(invoiceRecords);
-
-export const insertTaskSchema = createInsertSchema(tasks);
-export const selectTaskSchema = createSelectSchema(tasks);
-
-export const insertAuditLogSchema = createInsertSchema(auditLogs);
-export const selectAuditLogSchema = createSelectSchema(auditLogs);
-
-// Types
-export type Document = typeof documents.$inferSelect;
-export type WorkflowInstance = typeof workflowInstances.$inferSelect;
-export type InvoiceRecord = typeof invoiceRecords.$inferSelect;
-export type Task = typeof tasks.$inferSelect;
-export type AuditLog = typeof auditLogs.$inferSelect;
+export const insertDocumentSchema = documentSchema.omit({ id: true, createdAt: true });
+export const selectDocumentSchema = documentSchema;
+export const insertWorkflowInstanceSchema = workflowInstanceSchema.omit({ id: true, createdAt: true, updatedAt: true });
+export const selectWorkflowInstanceSchema = workflowInstanceSchema;
+export const insertInvoiceRecordSchema = invoiceRecordSchema.omit({ id: true, createdAt: true });
+export const selectInvoiceRecordSchema = invoiceRecordSchema;
+export const insertTaskSchema = taskSchema.omit({ id: true, createdAt: true, updatedAt: true });
+export const selectTaskSchema = taskSchema;
+export const insertAuditLogSchema = auditLogSchema.omit({ id: true, createdAt: true });
+export const selectAuditLogSchema = auditLogSchema;
+export const insertNotificationSchema = notificationSchema.omit({ id: true, createdAt: true });
+export const selectNotificationSchema = notificationSchema;

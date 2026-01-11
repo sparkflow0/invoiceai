@@ -1,6 +1,5 @@
-import { db } from "../db";
-import { workflowInstances, auditLogs, tasks, type WorkflowInstance, type AuditLog, type Task } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { firestoreAdd, firestoreUpdate, firestoreGet, firestoreQuery } from "../firebase-db";
+import { type WorkflowInstance, type AuditLog, type Task } from "@shared/schema";
 import { WorkflowDefinition, WorkflowStep } from "./types";
 import * as fs from "fs";
 import * as path from "path";
@@ -32,13 +31,13 @@ export class WorkflowEngine {
         const def = this.definitions.get(workflowId);
         if (!def) throw new Error(`Workflow definition ${workflowId} not found`);
 
-        const [instance] = await db.insert(workflowInstances).values({
+        const instance = await firestoreAdd("workflow_instances", {
             workflowType: workflowId,
             currentStep: def.initialStep,
             status: "active",
             data: initialData,
             userId,
-        }).returning();
+        });
 
         await this.logAction(instance.id, userId, "instance_created", null, instance.data);
 
@@ -49,7 +48,7 @@ export class WorkflowEngine {
     }
 
     async advanceStep(instanceId: string, userId: string, userAction?: string, actionData: any = {}) {
-        const [instance] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, instanceId));
+        const instance = await firestoreGet("workflow_instances", instanceId) as any;
         if (!instance) throw new Error("Instance not found");
 
         const def = this.definitions.get(instance.workflowType);
@@ -67,9 +66,15 @@ export class WorkflowEngine {
             nextStepName = currentStep.actions[userAction];
 
             // Mark task as completed if it exists
-            await db.update(tasks)
-                .set({ status: "completed", updatedAt: sql`NOW()` })
-                .where(sql`instance_id = ${instanceId} AND status = 'pending' AND role = ${currentStep.role}`);
+            const pendingTasks = await firestoreQuery("tasks", [
+                { field: "instanceId", operator: "==", value: instanceId },
+                { field: "status", operator: "==", value: "pending" },
+                { field: "role", operator: "==", value: currentStep.role }
+            ]);
+
+            for (const task of pendingTasks) {
+                await firestoreUpdate("tasks", task.id, { status: "completed" });
+            }
         } else if (currentStep.type === "system_action") {
             nextStepName = currentStep.nextStep;
         }
@@ -92,36 +97,30 @@ export class WorkflowEngine {
             status = (nextStepDef.status as any) || "completed";
         }
 
-        const [updatedInstance] = await db.update(workflowInstances)
-            .set({
-                currentStep: nextStepName,
-                data: updatedData,
-                status,
-                updatedAt: sql`NOW()`,
-            })
-            .where(eq(workflowInstances.id, instanceId))
-            .returning();
+        const updatedInstance = await firestoreUpdate("workflow_instances", instanceId, {
+            currentStep: nextStepName,
+            data: updatedData,
+            status,
+        });
 
         await this.logAction(instanceId, userId, "step_advance", previousState, { step: nextStepName, data: updatedData });
 
         // Process the next step (if it's a system action)
         await this.processStep(instanceId, userId);
 
-        return updatedInstance;
+        return { ...instance, ...updatedInstance };
     }
 
     async processStep(instanceId: string, userId: string) {
-        const [instance] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, instanceId));
+        const instance = await firestoreGet("workflow_instances", instanceId) as any;
         const def = this.definitions.get(instance.workflowType)!;
         const currentStep = def.steps[instance.currentStep];
 
         if (currentStep.type === "system_action") {
-            // System actions are handled by a separate runner or directly here for simplicity
-            // In a real system, this might be a background job
             await this.runSystemAction(instance, currentStep, userId);
         } else if (currentStep.type === "user_action") {
             // Create a task for the role
-            await db.insert(tasks).values({
+            const task = await firestoreAdd("tasks", {
                 instanceId: instance.id,
                 role: currentStep.role!,
                 actionType: "manual_review",
@@ -137,7 +136,7 @@ export class WorkflowEngine {
     }
 
     private async logAction(instanceId: string, userId: string, action: string, previousState: any, newState: any) {
-        await db.insert(auditLogs).values({
+        await firestoreAdd("audit_logs", {
             instanceId,
             userId,
             action,

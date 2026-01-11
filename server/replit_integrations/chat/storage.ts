@@ -1,43 +1,41 @@
-import { db } from "../../db";
-import { conversations, messages } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { firestoreAdd, firestoreUpdate, firestoreGet, firestoreQuery, firestoreDelete } from "../../firebase-db";
 
 export interface IChatStorage {
-  getConversation(id: number): Promise<typeof conversations.$inferSelect | undefined>;
-  getAllConversations(): Promise<(typeof conversations.$inferSelect)[]>;
-  createConversation(title: string): Promise<typeof conversations.$inferSelect>;
-  deleteConversation(id: number): Promise<void>;
-  getMessagesByConversation(conversationId: number): Promise<(typeof messages.$inferSelect)[]>;
-  createMessage(conversationId: number, role: string, content: string): Promise<typeof messages.$inferSelect>;
+  getConversation(id: string): Promise<any>;
+  getAllConversations(): Promise<any[]>;
+  createConversation(title: string): Promise<any>;
+  deleteConversation(id: string): Promise<void>;
+  getMessagesByConversation(conversationId: string): Promise<any[]>;
+  createMessage(conversationId: string, role: string, content: string): Promise<any>;
 }
 
 export const chatStorage: IChatStorage = {
-  async getConversation(id: number) {
-    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
-    return conversation;
+  async getConversation(id: string) {
+    return await firestoreGet("conversations", id);
   },
 
   async getAllConversations() {
-    return db.select().from(conversations).orderBy(desc(conversations.createdAt));
+    return await firestoreQuery("conversations", [], { field: "createdAt", direction: "desc" });
   },
 
   async createConversation(title: string) {
-    const [conversation] = await db.insert(conversations).values({ title }).returning();
-    return conversation;
+    return await firestoreAdd("conversations", { title });
   },
 
-  async deleteConversation(id: number) {
-    await db.delete(messages).where(eq(messages.conversationId, id));
-    await db.delete(conversations).where(eq(conversations.id, id));
+  async deleteConversation(id: string) {
+    const messages = await firestoreQuery("messages", [{ field: "conversationId", operator: "==", value: id }]);
+    for (const msg of messages) {
+      await firestoreDelete("messages", msg.id);
+    }
+    await firestoreDelete("conversations", id);
   },
 
-  async getMessagesByConversation(conversationId: number) {
-    return db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
+  async getMessagesByConversation(conversationId: string) {
+    return await firestoreQuery("messages", [{ field: "conversationId", operator: "==", value: conversationId }], { field: "createdAt", direction: "asc" });
   },
 
-  async createMessage(conversationId: number, role: string, content: string) {
-    const [message] = await db.insert(messages).values({ conversationId, role, content }).returning();
-    return message;
+  async createMessage(conversationId: string, role: string, content: string) {
+    return await firestoreAdd("messages", { conversationId, role, content });
   },
 };
 

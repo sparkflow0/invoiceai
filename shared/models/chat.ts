@@ -1,34 +1,20 @@
-import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
 
-export const conversations = pgTable("conversations", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+export const conversationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.union([z.date(), z.string(), z.number()]),
 });
 
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
-  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
-  role: text("role").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+export const messageSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  role: z.string(),
+  content: z.string(),
+  createdAt: z.union([z.date(), z.string(), z.number()]),
 });
 
-export const insertConversationSchema = createInsertSchema(conversations).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertMessageSchema = createInsertSchema(messages).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type Conversation = typeof conversations.$inferSelect;
-export type InsertConversation = z.infer<typeof insertConversationSchema>;
-export type Message = typeof messages.$inferSelect;
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
-
+export type Conversation = z.infer<typeof conversationSchema>;
+export type Message = z.infer<typeof messageSchema>;
+export type InsertConversation = Omit<Conversation, "id" | "createdAt">;
+export type InsertMessage = Omit<Message, "id" | "createdAt">;

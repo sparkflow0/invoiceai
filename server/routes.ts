@@ -40,9 +40,7 @@ import {
 import { getStripeClient, getStripePriceId, getStripeWebhookSecret } from "./billing";
 import { getHistoryEntryForUser, listHistoryEntriesForUser, saveHistoryEntryForUser } from "./history";
 import { workflowEngine } from "./workflow/engine";
-import { db } from "./db";
-import { workflowInstances, auditLogs, tasks, invoiceRecords } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { firestoreAdd, firestoreUpdate, firestoreGet, firestoreQuery } from "./firebase-db";
 
 let openaiClient: OpenAI | null = null;
 
@@ -1467,13 +1465,13 @@ export async function registerRoutes(
 
       let finalDocId = documentId;
       if (objectPath && !documentId) {
-        const [doc] = await db.insert(documents).values({
+        const doc = await firestoreAdd("documents", {
           fileName: fileName || "unnamed",
           fileType: fileType || "application/pdf",
           fileSize: fileSize || 0,
           objectPath,
           userId,
-        }).returning();
+        });
         finalDocId = doc.id;
       }
 
@@ -1488,12 +1486,12 @@ export async function registerRoutes(
 
   app.get("/api/workflows/:id", async (req, res) => {
     try {
-      const [instance] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, req.params.id));
+      const instance = await firestoreGet("workflow_instances", req.params.id);
       if (!instance) return res.status(404).json({ message: "Not found" });
 
-      const [record] = await db.select().from(invoiceRecords).where(eq(invoiceRecords.instanceId, instance.id));
+      const records = await firestoreQuery("invoice_records", [{ field: "instanceId", operator: "==", value: req.params.id }]);
 
-      res.json({ ...instance, invoiceRecord: record });
+      res.json({ ...instance, invoiceRecord: records[0] || null });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -1513,9 +1511,10 @@ export async function registerRoutes(
 
   app.get("/api/workflows/:id/timeline", async (req, res) => {
     try {
-      const logs = await db.select().from(auditLogs)
-        .where(eq(auditLogs.instanceId, req.params.id))
-        .orderBy(desc(auditLogs.createdAt));
+      const logs = await firestoreQuery("audit_logs",
+        [{ field: "instanceId", operator: "==", value: req.params.id }],
+        { field: "createdAt", direction: "desc" }
+      );
       res.json(logs);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -1525,11 +1524,11 @@ export async function registerRoutes(
   app.get("/api/tasks", async (req, res) => {
     try {
       const { role } = req.query;
-      let query = db.select().from(tasks).where(eq(tasks.status, "pending"));
+      const queries: any[] = [{ field: "status", operator: "==", value: "pending" }];
       if (role) {
-        query = query.where(eq(tasks.role, role as string)) as any;
+        queries.push({ field: "role", operator: "==", value: role as string });
       }
-      const pendingTasks = await query;
+      const pendingTasks = await firestoreQuery("tasks", queries);
       res.json(pendingTasks);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
